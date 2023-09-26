@@ -43,9 +43,9 @@ qq_plot <- function(actual,pred,target){
 	legend("topleft", legend = legend_text, col = "red", lty = 1,bg='grey')
 }
 
-#pdf('/mnt/beegfs/userdata/d_papakonstantinou/damage/multioutput.pdf',width=12,height=9)
-pdf('/mnt/beegfs/userdata/d_papakonstantinou/damage/rplot_draft.pdf',width=12,height=9)
+pdf('multioutput.pdf',width=12,height=9)
 data <- read.csv('data_29_08_23.csv')
+########################## Data Preparation  ###########################
 print(colnames(data))
 hist(data$alpha)
 hist(data$beta)
@@ -54,7 +54,6 @@ hist(data$beta)
 data$RBE <-NULL
 data$Energy <-NULL
 data$DoseRate <-NULL
-# Data Preparation 
 data <- data %>% mutate(CellLine = str_trim(CellLine))
 data <- data %>% mutate(CellLine = toupper(CellLine))
 data <- data %>% mutate(CellClass = str_trim(CellClass))
@@ -62,6 +61,7 @@ data <- data %>% mutate(IrradiationConditions = str_trim(IrradiationConditions))
 data <- data %>% mutate(Tissue = str_trim(Tissue))
 data <- data %>% mutate(Tissue = toupper(Tissue))
 data <- subset(data, LET < 1000)
+
 data$RadiationType[data$RadiationType == "α-particles"] <- "alpha-particles" # remove greek letters
 data$RadiationType[data$RadiationType == "γ-rays"] <- "gamma-rays" # remove greek letters
 data$RadiationType         <- as.factor(data$RadiationType)
@@ -76,7 +76,6 @@ barplot(table(data$CellCycle)/length(data$CellCycle))
 barplot(table(data$IrradiationConditions)/length(data$IrradiationConditions))
 barplot(table(data$RadiationType)/length(data$RadiationType))
 barplot(table(data$CellClass)/length(data$CellClass))
-print("PASOK")
 print(dim(data))
 #######################################################################
 ## 90% of the sample size
@@ -120,7 +119,7 @@ if (library("interp", logical.return = TRUE)) {
 	## plot the surface
 	plot.tune(o)
 }
-
+# Fit model with optimal parameters
 model <- rfsrc(Multivar(alpha, beta) ~., train, importance = TRUE, mtry = o$optimal['mtry'], nodesize=o$optimal['nodesize'])
 
 par(mfrow=c(2,2))
@@ -148,20 +147,19 @@ vmp.std <- get.mv.vimp(model, standardize = TRUE)
 
 print(err.std)
 print(vmp.std)
-
+## qqplots 
 par(mfrow=c(1,1))
 qq_plot(test[,'alpha'],pred_alpha,'alpha')
 par(mfrow=c(1,1))
 qq_plot(test[,'beta'],pred_alpha,'beta')
 
-#plot(test[,'alpha'], pred_alpha, main="alpha: Actual vs Predicted", xlab="Actual", ylab="Predicted")
-#par(mfrow=c(1,1))
-#plot(test[,'beta'], pred_beta, main="beta: Actual vs Predicted", xlab="Actual", ylab="Predicted")
+# quantiles
 o <- quantreg(Multivar(alpha, beta) ~., data = train,newdata=test,mtry =o$optimal['mtry'],nodesize= o$optimal['nodesize'])
 
 plot.quantreg(o,m.target='alpha')
 plot.quantreg(o,m.target='beta')
 
+# Partial Dependence plots
 variables = c('LET', 'IrradiationConditions', 'RadiationType', 'nonDSBClusters', 'DSBs', 'CellClass', 'CellCycle')
 for (variable in variables){
 	par(mfrow=c(1,1))
@@ -169,8 +167,6 @@ for (variable in variables){
 		      variable,
 		      partial = T,
 		      m.target = "alpha",
-#		      las = 2,
-#		      cex.axis = 0.5,
 )
 }
 
@@ -192,8 +188,6 @@ for (variable in variables){
 		
 	p <- barplot(pdta1$yhat, 
 		     names.arg="", 
-		     #	cex.axis = 0.2, 
-		     #	cex.names = 0.4, 
 		     ylim = c(0.95*min(pdta1$yhat),1.1*max(pdta1$yhat)),
 		     ylab = expression(hat(y)),
 		     xlab = variable,
