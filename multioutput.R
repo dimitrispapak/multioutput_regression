@@ -1,3 +1,10 @@
+#Attached Packages:
+# interp_1.1-4
+# knitr_1.43
+# readxl_1.4.3
+# dplyr_1.1.0
+# randomForestSRC_3.2.2
+# stringr_1.5.0
 library(dplyr)
 library(stringr)
 library(knitr)
@@ -196,3 +203,5 @@ for (variable in variables){
 	text(x = p, y = pdta1$yhat + 0.01,labels=df$top_names,srt = -45)
 
 }
+sessionInfo()
+q()
