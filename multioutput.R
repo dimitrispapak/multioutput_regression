@@ -69,7 +69,7 @@ qq_plot <- function(actual,pred,target,log=F){
 	legend("topleft", legend = legend_text, col = "red", lty = 1,bg='grey')
 }
 
-train_test_ratio = 0.7
+train_test_ratio = 0.9
 current_date <- format(Sys.Date(), "%d_%m_%Y")
 train_percent <- train_test_ratio * 100
 test_percent <- (1 - train_test_ratio)* 100
@@ -140,16 +140,13 @@ train_ind <- sample(seq_len(nrow(data)), size = smp_size)
 
 train <- data[train_ind, ]
 test <- data[-train_ind, ]
-print('train-test size:')
-print(dim(train))
-print(dim(test))
+
 print(colnames(test))
 
 
 o <- tune(Multivar(alpha, beta) ~., train)
 print('optimal parameters:')
 print(o$optimal)
-
 ## visualize the nodesize/mtry OOB surface
 if (library("interp", logical.return = TRUE)) {
 
@@ -237,10 +234,10 @@ row.names(df) <- c("Mean Absolute Error","RMSE","Spearman Rho","R^2")
 print(textplot(round(df,3)))
 
 # quantiles
-o <- quantreg(Multivar(alpha, beta) ~., data = train,newdata=test,mtry =o$optimal['mtry'],nodesize= o$optimal['nodesize'])
+quantiles <- quantreg(Multivar(alpha, beta) ~., data = train,newdata=test,mtry =o$optimal['mtry'],nodesize= o$optimal['nodesize'])
 
-plot.quantreg(o,m.target='alpha')
-plot.quantreg(o,m.target='beta')
+plot.quantreg(quantiles,m.target='alpha')
+plot.quantreg(quantiles,m.target='beta')
 
 # Partial Dependence plots
 variables = c('LET', 'IrradiationConditions', 'RadiationType', 'nonDSBClusters', 'DSBs', 'CellClass', 'CellCycle')
@@ -280,5 +277,13 @@ for (variable in variables){
 	text(x = p, y = pdta1$yhat + 0.01,labels=df$top_names,srt = -45)
 
 }
+print(paste('ratio: ',train_test_ratio))
+print('dim(train):')
+print(dim(train))
+print('dim(test)')
+print(dim(test))
+print('optimal parameters')
+print(o$optimal)
+print(quantiles)
 sessionInfo()
 q()
