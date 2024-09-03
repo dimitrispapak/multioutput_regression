@@ -10,22 +10,44 @@ library(dplyr)
 library(stringr)
 library(knitr)
 library(readxl)
+library(gplots)
 library(randomForestSRC)
-qq_plot <- function(actual,pred,target){
+
+perf_metrics <- function(actual,pred){
 	na_indeces <- which(is.na(actual))
-	actual <- actual[-na_indeces]
-	pred <- pred[-na_indeces]
+	if (length(na_indeces) > 0){
+		actual <- actual[-na_indeces]
+		pred <- pred[-na_indeces]
+	}
+	print(paste("mean actual",mean(actual)))
+	mae <- sum(abs(actual - pred))/length(actual)
+	rmse <- sqrt(mean((actual - pred)^2)) 
+	rho <- cor.test(actual, pred, method = 'spearman')$estimate
+	r_squared <- (cor(actual,pred))^2
+	return(c('mae' = mae,'rmse' = rmse,'rho'= rho,'r^2'= r_squared))
+}
 
-	print(paste("RMSE: ",target))
-	print(sqrt(mean((actual - pred)^2)))
 
-	min = min(min(actual),min(pred))
-	max = max(max(actual),max(pred))
+qq_plot <- function(actual,pred,target,log=F){
+	na_indeces <- which(is.na(actual))
+	if (length(na_indeces) > 0){
+		actual <- actual[-na_indeces]
+		pred <- pred[-na_indeces]
+	}
+	if (log == T){
+		actual = log(actual)
+		pred = log(pred)
+	}
+
+	min_ = min(min(actual),min(pred))
+	max_ = max(max(actual),max(pred))
+
+
 	plot(x = pred, y = actual,
 	     xlab = 'Predicted ',
 	     ylab = 'Actual',
-	     ylim = c(min,max),
-	     xlim = c(min,max),
+	     ylim = c(min_,max_),
+	     xlim = c(min_,max_),
 	     main = paste(target,'Predicted vs. Actual'))
 	# Adding a diagonal line for the ideal prediction
 	abline(a = 0, b = 1)
@@ -38,30 +60,62 @@ qq_plot <- function(actual,pred,target){
 	coefficients <- coef(model)
 	# Calculate R-squared
 	r_squared <- summary(model)$r.squared
+	# spearman correlation rho value
+	rho <- cor.test(actual, pred, method = 'spearman')$estimate
 	# Create the legend text
-	legend_text <- paste("y = ", round(coefficients[2], 2), "x + ", round(coefficients[1], 2), "\nR^2 = ", round(r_squared, 2))
+	#legend_text <- paste("y = ", round(coefficients[2], 2), "x + ", round(coefficients[1], 2), "\nR^2 = ", round(r_squared, 2))
+	legend_text <- paste("y = ", round(coefficients[2], 2), "x + ", round(coefficients[1], 2), "\nR^2 = ", round(r_squared, 2),",\tSpearman correlation rho=",round(rho,2))
 	# Add the legend to the plot
 	legend("topleft", legend = legend_text, col = "red", lty = 1,bg='grey')
 }
 
-pdf('multioutput.pdf',width=12,height=9)
-data <- read.csv('data_29_08_23.csv')
+train_test_ratio = 0.7
+current_date <- format(Sys.Date(), "%d_%m_%Y")
+train_percent <- train_test_ratio * 100
+test_percent <- (1 - train_test_ratio)* 100
+pdf_file = paste0(train_percent,'-',test_percent,'_results_',current_date,'.pdf')
+pdf(pdf_file,width=12,height=9)
+#data <- read.csv('data_29_08_23.csv')
+#data <- read.csv('data_29_03_24_cleaned.csv')
+data <- as.data.frame(read_excel('/mnt/beegfs/userdata/d_papakonstantinou/damage/TelikogiaDim.xlsx'))
 ########################## Data Preparation  ###########################
 print(colnames(data))
+data$alpha <- as.numeric(data$alpha)
+data$beta <- as.numeric(data$beta)
+data$LET <- as.numeric(data$LET)
+data$RBE <- as.numeric(data$RBE)
+data$DoseRate <- as.numeric(data$DoseRate)
+data$Energy <- as.numeric(data$Energy)
+data$DSBs <- as.numeric(data$DSBs)
+data$nonDSBClusters <- as.numeric(data$nonDSBClusters)
+
 hist(data$alpha)
 hist(data$beta)
+hist(data$LET)
+hist(data$RBE)
+hist(data$DoseRate)
+hist(data$Energy)
 
 # Removal of mostly empty features
 data$RBE <-NULL
 data$Energy <-NULL
 data$DoseRate <-NULL
+data$X <-NULL
+data$`#ExpID` <-NULL
+data$PMID <-NULL
+data$`#Exp` <-NULL
+
+kable(head(data))
 data <- data %>% mutate(CellLine = str_trim(CellLine))
 data <- data %>% mutate(CellLine = toupper(CellLine))
 data <- data %>% mutate(CellClass = str_trim(CellClass))
 data <- data %>% mutate(IrradiationConditions = str_trim(IrradiationConditions))
 data <- data %>% mutate(Tissue = str_trim(Tissue))
+
 data <- data %>% mutate(Tissue = toupper(Tissue))
-data <- subset(data, LET < 1000)
+print(dim(data))
+data <- data[!is.na(data$LET),]
+print(dim(data))
 
 data$RadiationType[data$RadiationType == "α-particles"] <- "alpha-particles" # remove greek letters
 data$RadiationType[data$RadiationType == "γ-rays"] <- "gamma-rays" # remove greek letters
@@ -79,16 +133,21 @@ barplot(table(data$RadiationType)/length(data$RadiationType))
 barplot(table(data$CellClass)/length(data$CellClass))
 print(dim(data))
 #######################################################################
-## 90% of the sample size
-smp_size <- floor(0.9 * nrow(data))
+smp_size <- floor(train_test_ratio * nrow(data))
 ## set the seed to make your partition reproducible
 set.seed(123)
 train_ind <- sample(seq_len(nrow(data)), size = smp_size)
 
 train <- data[train_ind, ]
 test <- data[-train_ind, ]
+print('train-test size:')
+print(dim(train))
+print(dim(test))
+print(colnames(test))
+
 
 o <- tune(Multivar(alpha, beta) ~., train)
+print('optimal parameters:')
 print(o$optimal)
 
 ## visualize the nodesize/mtry OOB surface
@@ -151,8 +210,31 @@ print(vmp.std)
 ## qqplots 
 par(mfrow=c(1,1))
 qq_plot(test[,'alpha'],pred_alpha,'alpha')
+res1 <- perf_metrics(test[,'alpha'],pred_alpha)
+
 par(mfrow=c(1,1))
-qq_plot(test[,'beta'],pred_alpha,'beta')
+qq_plot(test[,'alpha'],pred_alpha,'log(alpha)',log=T)
+
+indices <- which(test[,'alpha'] >= 0 & test[,'alpha'] <= 2)
+par(mfrow=c(1,1))
+qq_plot(test[,'alpha'][indices],pred_alpha[indices],'alpha (0 <-> 2)')
+res2 <- perf_metrics(test[,'alpha'][indices],pred_alpha[indices])
+
+par(mfrow=c(1,1))
+qq_plot(test[,'beta'],pred_beta,'beta')
+res3 <- perf_metrics(test[,'beta'],pred_beta)
+
+par(mfrow=c(1,1))
+indices <- which(test[,'beta'] >= 0 & test[,'beta'] <= 2)
+qq_plot(test[,'beta'][indices],pred_beta[indices],'beta (0 <-> 2)')
+res4 <- perf_metrics(test[,'beta'][indices],pred_beta[indices])
+
+list_of_vectors <- list(res1,res2,res3,res4)
+df <- do.call(rbind,list_of_vectors)
+row.names(df) <- c("alpha","alpha 0 <-> 2","beta","beta 0 <-> 2")
+df <- t(df)
+row.names(df) <- c("Mean Absolute Error","RMSE","Spearman Rho","R^2")
+print(textplot(round(df,3)))
 
 # quantiles
 o <- quantreg(Multivar(alpha, beta) ~., data = train,newdata=test,mtry =o$optimal['mtry'],nodesize= o$optimal['nodesize'])
@@ -168,7 +250,7 @@ for (variable in variables){
 		      variable,
 		      partial = T,
 		      m.target = "alpha",
-)
+		      )
 }
 
 variables = c('Tissue','CellLine')
@@ -186,7 +268,7 @@ for (variable in variables){
 	top_n <- df %>% top_n(5,numbers)
 	top_names <- top_n[,"names"]
 	df$top_names <- ifelse(df$names %in% top_names,as.character(df$names),"")	
-		
+
 	p <- barplot(pdta1$yhat, 
 		     names.arg="", 
 		     ylim = c(0.95*min(pdta1$yhat),1.1*max(pdta1$yhat)),
